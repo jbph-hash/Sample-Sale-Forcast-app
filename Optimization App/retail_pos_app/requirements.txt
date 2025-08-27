@@ -1,0 +1,10 @@
+flask==3.0.3
+pandas>=2.2.2
+openpyxl>=3.1.5
+scipy>=1.13.1
+# statsmodels can be installed; app falls back gracefully if unavailable
+statsmodels>=0.14.2
+python-docx>=1.1.2
+matplotlib>=3.9.0
+
+

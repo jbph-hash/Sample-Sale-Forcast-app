@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+    h1 { margin-top: 0; }
+    form { margin: 12px 0; }
+    input[type=text], input[type=number] { padding: 6px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
+    th { background: #f4f4f4; text-align: left; }
+    .row { display: flex; gap: 24px; align-items: flex-start; }
+    .card { border: 1px solid #eee; padding: 16px; border-radius: 8px; flex: 1; }
+    .actions a, .actions button { margin-right: 8px; }
+    .kpis { display: flex; gap: 16px; margin: 12px 0; }
+    .kpi { background: #fafafa; border: 1px solid #eee; padding: 12px 16px; border-radius: 8px; }
+    .muted { color: #666; font-size: 12px; }
+    .prompt { margin-top: 8px; padding: 10px 12px; border-radius: 6px; display: none; }
+    .prompt.error { background: #fde2e1; color: #7a1f1a; border: 1px solid #f5c2c0; display: block; }
+    .prompt.ok { background: #e7f7ec; color: #0f5132; border: 1px solid #bcd0c7; display: block; }
+
+    /* Uniform form styles */
+    .card form { max-width: 420px; }
+    .card form .field { display: flex; flex-direction: column; margin: 8px 0; }
+    .card form label { font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333; }
+    .card form input[type=text],
+    .card form input[type=number] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .card form button { 
+      padding: 10px 14px; 
+      border: 1px solid #0b5ed7; 
+      background: #0d6efd; 
+      color: #fff; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      font-size: 14px;
+    }
+    .card form button:hover { background: #0b5ed7; }
+  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:,">
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+</head>
+<body>
+  <h1>Retail POS Dashboard</h1>
+  
+  <div class="row">
+    <div class="card">
+      <h2>Scan / Add Transaction</h2>
+      <form id="txnForm" method="POST" action="/add_transaction">
+        <div class="field">
+          <label>Product Code</label>
+          <input id="code" type="text" name="product_code" autofocus required>
+        </div>
+        <div class="field">
+          <label>Quantity</label>
+          <input type="number" name="quantity" value="1" min="1" required>
+        </div>
+        <button type="submit">Add</button>
+      </form>
+      <div id="stockPrompt" class="prompt"></div>
+
+      <div class="actions">
+        <button id="btnAnalyze" type="button">Run Forecast + Optimization</button>
+        <button id="btnReport" type="button">Generate Today's Report</button>
+      </div>
+      <div id="actionStatus" class="muted"></div>
+
+      <div style="margin-top:16px; border-top:1px solid #eee; padding-top:12px;">
+        <h3 style="margin:8px 0;">Settings</h3>
+        <form method="POST" action="/config">
+          <div class="field">
+            <label><input type="checkbox" name="auto_add_products" {% if auto_add %}checked{% endif %}> Auto-add products on scan</label>
+          </div>
+          <button type="submit">Save Settings</button>
+        </form>
+        <div class="kpis" style="margin-top:12px;">
+          <div class="kpi"><div>Total Products</div><div><strong>{{ kpis.total_products }}</strong></div></div>
+          <div class="kpi"><div>Total Stock Units</div><div><strong>{{ kpis.total_stock_units }}</strong></div></div>
+          <div class="kpi"><div>Today's Transactions</div><div><strong>{{ kpis.today_transactions }}</strong></div></div>
+          <div class="kpi"><div>Today's Revenue</div><div><strong>{{ '%.2f'|format(kpis.today_revenue) }}</strong></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Add / Update Product</h2>
+      <form method="POST" action="/add_product">
+        <div class="field"><label>Code</label><input type="text" name="product_code" required></div>
+        <div class="field"><label>Name</label><input type="text" name="product_name" required></div>
+        <div class="field"><label>Price</label><input type="number" step="0.01" name="price" required></div>
+        <div class="field"><label>Stock</label><input type="number" name="stock" required></div>
+        <div class="field"><label>Lead Time (minutes)</label><input type="number" name="lead_time_minutes" value="2880"></div>
+        <div class="field"><label>Holding Cost</label><input type="number" step="0.01" name="holding_cost" value="1.0"></div>
+        <div class="field"><label>Ordering Cost</label><input type="number" step="0.01" name="ordering_cost" value="50.0"></div>
+        <div class="field"><label>Service Level (0-1)</label><input type="number" step="0.01" name="service_level" value="0.95"></div>
+        <button type="submit">Save Product</button>
+      </form>
+    </div>
+  </div>
+
+  
+
+  <h2 style="margin-top:24px;">Recent Transactions</h2>
+  <div class="actions" style="margin-bottom:8px;">
+    <button id="btnTxRefresh" type="button">Refresh</button>
+    <button id="btnTxClear" type="button" style="background:#dc3545;border-color:#b02a37;">Clear All</button>
+    <span id="txStatus" class="muted"></span>
+  </div>
+  <table>
+    <tr>
+      <th>ID</th><th>Code</th><th>Name</th><th>Qty</th><th>Price</th><th>Stock</th><th>Time</th>
+    </tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r['id'] }}</td>
+      <td>{{ r['product_code'] }}</td>
+      <td>{{ r['product_name'] }}</td>
+      <td>{{ r['quantity'] }}</td>
+      <td>{{ r['price'] }}</td>
+      <td>{{ r['current_stock'] if 'current_stock' in r else '' }}</td>
+      <td>{{ r['timestamp'] }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <div class="row" style="margin-top:24px;">
+    <div class="card">
+      <h2>Auto Reorders</h2>
+      <div class="actions" style="margin-bottom:8px;">
+        <form method="POST" action="/config">
+          <label><input type="checkbox" name="AUTO_REORDER_ENABLED" checked disabled> Auto-reorder Enabled (server-level)</label>
+        </form>
+      </div>
+      <div id="reorders"></div>
+    </div>
+  </div>
+
+  <script>
+    // Keep focus on code box for fast scanning
+    window.addEventListener('load', () => {
+      const el = document.getElementById('code');
+      if (el) el.focus();
+    });
+
+    const setStatus = (msg) => {
+      const s = document.getElementById('actionStatus');
+      if (s) s.textContent = msg || '';
+    };
+    const setPrompt = (msg, kind) => {
+      const p = document.getElementById('stockPrompt');
+      if (!p) return;
+      p.textContent = msg || '';
+      p.className = 'prompt' + (msg ? (' ' + (kind || 'error')) : '');
+    };
+
+    const safeFetch = async (url, opts) => {
+      try {
+        const r = await fetch(url, opts);
+        const ct = r.headers.get('content-type') || '';
+        if (ct.includes('application/json')) return await r.json();
+        return { status: r.ok ? 'ok' : 'error', message: await r.text() };
+      } catch (e) {
+        return { status: 'error', message: String(e) };
+      }
+    };
+
+    document.getElementById('btnAnalyze')?.addEventListener('click', async () => {
+      setStatus('Running forecast and optimization...');
+      const res = await safeFetch('/analyze');
+      if (res.status === 'ok') {
+        setStatus('Recommendations saved: ' + (res.saved_to || 'done') + ' — preparing download...');
+        // Auto-download the Excel forecast (reverted)
+        window.open('/analyze/download', '_blank');
+      } else {
+        setStatus(res.message || 'Error running analysis');
+      }
+    });
+
+    // Intercept Scan/Add form to show popup on out-of-stock
+    document.getElementById('txnForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.currentTarget;
+      const fd = new FormData(form);
+      try {
+        const resp = await fetch(form.action, { method: 'POST', body: fd });
+        if (resp.ok) {
+          setPrompt('', '');
+          location.reload();
+          return;
+        }
+        const txt = await resp.text();
+        setPrompt(txt || 'Out of stock.', 'error');
+        const el = document.getElementById('code');
+        if (el) el.focus();
+      } catch (err) {
+        setPrompt('Network error. Please try again.', 'error');
+      }
+    });
+
+    // removed seed demo button
+
+    document.getElementById('btnClose')?.addEventListener('click', async () => {
+      // deprecated
+    });
+
+    document.getElementById('btnReport')?.addEventListener('click', async () => {
+      if (!confirm('Generate and download today\'s report?')) return;
+      setStatus('Generating report...');
+      // First trigger close_day to ensure the Excel is created
+      const res = await safeFetch('/close_day', { method: 'POST' });
+      if (res.status === 'ok' && res.report) {
+        setStatus('Report saved. Downloading...');
+        window.open('/report/today', '_blank');
+      } else if (res.status === 'empty') {
+        setStatus(res.message || 'No transactions today.');
+      } else {
+        setStatus(res.message || 'Error generating report');
+      }
+    });
+
+    // Recent transactions controls
+    const setTxStatus = (m) => {
+      const el = document.getElementById('txStatus');
+      if (el) el.textContent = m || '';
+    };
+
+    document.getElementById('btnTxRefresh')?.addEventListener('click', () => {
+      location.reload();
+    });
+
+    document.getElementById('btnTxClear')?.addEventListener('click', async () => {
+      if (!confirm('Clear ALL transactions? This cannot be undone.')) return;
+      setTxStatus('Clearing...');
+      const res = await safeFetch('/transactions/clear', { method: 'POST' });
+      if (res.status === 'ok') {
+        setTxStatus('Cleared.');
+        location.reload();
+      } else {
+        setTxStatus(res.message || 'Error clearing transactions');
+      }
+    });
+
+    document.getElementById('btnPrint')?.addEventListener('click', async () => {
+      setStatus('Finalizing receipt...');
+      const res = await safeFetch('/receipt/print', { method: 'POST' });
+      if (res.status === 'ok') {
+        setStatus('Receipt printed. Elapsed (min): ' + res.elapsed_minutes + '. Updated products: ' + (res.affected_products || []).join(', '));
+      } else {
+        setStatus(res.message || 'No open receipt. Scan items first.');
+      }
+    });
+
+    // Load reorders list
+    const loadReorders = async () => {
+      try {
+        const r = await fetch('/reorders');
+        const data = await r.json();
+        const el = document.getElementById('reorders');
+        if (!el) return;
+        if (!Array.isArray(data) || data.length === 0) {
+          el.innerHTML = '<div class="muted">No pending reorders.</div>';
+          return;
+        }
+        const rows = data.map(x => `<tr>
+          <td>${x.id}</td>
+          <td>${x.product_code}</td>
+          <td>${x.product_name}</td>
+          <td>${x.suggested_qty}</td>
+          <td>${x.status}</td>
+          <td>${x.created_at}</td>
+        </tr>`).join('');
+        el.innerHTML = `<table><tr><th>ID</th><th>Code</th><th>Name</th><th>Qty</th><th>Status</th><th>Created</th></tr>${rows}</table>`;
+      } catch (e) {}
+    };
+    loadReorders();
+  </script>
+</body>
+</html>
+
+
